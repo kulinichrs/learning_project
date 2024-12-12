@@ -1,0 +1,1 @@
+from lib.windowcapture import WindowCapture
