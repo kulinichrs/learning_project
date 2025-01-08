@@ -80,6 +80,62 @@ class WindowCapture:
 
         return np.ascontiguousarray(img)
 
+
+    def simplify_image_colors(image, base_colors):
+        """
+        Упрощает цвета изображения, приводя их к ближайшим из заданной палитры.
+
+        :param image: Исходное изображение в формате BGR (numpy array).
+        :param base_colors: Список базовых цветов в формате BGR (list of tuples).
+        :return: Изображение с упрощённой цветовой палитрой.
+        """
+        # Конвертируем изображение в формат float32 для вычислений
+        image = image.astype(np.float32)
+
+        # Преобразуем базовые цвета в numpy массив
+        base_colors = np.array(base_colors, dtype=np.float32)
+
+        # Создаем пустое изображение для упрощённых цветов
+        simplified_image = np.zeros_like(image)
+
+        # Для каждого пикселя ищем ближайший цвет из палитры
+        for i in range(image.shape[0]):
+            for j in range(image.shape[1]):
+                pixel = image[i, j]
+                # Вычисляем расстояние до каждого базового цвета
+                distances = np.linalg.norm(base_colors - pixel, axis=1)
+                # Выбираем ближайший цвет
+                closest_color = base_colors[np.argmin(distances)]
+                simplified_image[i, j] = closest_color
+
+        # Преобразуем обратно к uint8
+        simplified_image = simplified_image.astype(np.uint8)
+        return simplified_image
+
+    # Пример использования
+    if name == "__main__":
+        # Задаём базовые цвета (BGR формат)
+        base_colors = [
+            (0, 0, 255),  # Красный
+            (0, 255, 0),  # Зелёный
+            (255, 0, 0),  # Синий
+            (0, 255, 255),  # Жёлтый
+            (255, 255, 0),  # Голубой
+            (255, 0, 255),  # Фиолетовый
+            (0, 0, 0),  # Чёрный
+            (255, 255, 255)  # Белый
+        ]
+
+        # Загрузим изображение
+        image = cv2.imread("input_image.jpg")
+
+        # Упростим цвета
+        simplified_image = simplify_image_colors(image, base_colors)
+
+        # Сохраним результат
+        cv2.imwrite("simplified_image.jpg", simplified_image)
+        print("Изображение сохранено как simplified_image.jpg")
+
     @staticmethod
     def list_window_names():
         """

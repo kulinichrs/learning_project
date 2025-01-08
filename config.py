@@ -14,19 +14,26 @@ CIRCLE_RADIUS_SMALL = 5  # Small radius for possible target.
 KEY_WAIT_MS = 100  # Delay for OpenCV key listener.
 
 # Bot runtime settings
-BOT_RUNTIME_LIMIT_HOURS = 2  # Maximum bot runtime in hours.
+DETECTION_DEBUG_MODE= False
+BOT_DONT_NEED_LOOT=False
+BOT_MASS_FARM_MODE = True
+BOT_MAX_MOBS = 3
+BOT_ANIMUS_CAREFUL = False
+BOT_RUNTIME_LIMIT_HOURS = 8  # Maximum bot runtime in hours.
+BOT_START_DELAY_HOURS = 0
 MOB_IGNORE_TIMEOUT_SECONDS = 180  # Timeout for ignoring mobs in seconds.
 ATTACK_VALID_TIMEOUT_SECONDS = 3  # Timeout for attack validation in seconds.
-REBUFF_TIMEOUT_SECODS = 108
+REBUFF_TIMEOUT_SECODS = 30
 ANIMUS_TIMEOUT_SECODS = 120
+BOT_LOOT_TIME = 100 #recommended 100 - for cragmine farm ( not alot of loot) and 250 for AssasinBuildALfa
 
 # Color ranges for attack and detection
 COLOR_ATTACK_R_RANGE = (80, 255)  # Red channel range for attack color.
 COLOR_ATTACK_G_RANGE = (80, 255)  # Green channel range for attack color.
 COLOR_ATTACK_B_RANGE = (0, 120)  # Blue channel range for attack color.
 
-COLOR_YELLOW_LOWER = [20, 75, 75]  # Lower bound for yellow color detection.
-COLOR_YELLOW_UPPER = [43, 255, 255]  # Upper bound for yellow color detection.
+COLOR_YELLOW_LOWER = [26, 70, 50]  # Lower bound for yellow color detection.
+COLOR_YELLOW_UPPER = [50, 255, 255]  # Upper bound for yellow color detection.
 
 # Colors for visualization
 LINE_COLOR_RED = (0, 0, 255)  # Red color for rectangle lines.
@@ -39,36 +46,40 @@ TITLEBAR_PIXELS = 0  # Number of pixels to ignore for the title bar.
 # Области анализа (координаты x, y верхнего левого и нижнего правого угла)
 TARGET_AREA = [[387, 264], [580, 288]]  # Область для проверки наличия цели
 ANIMUS_AREA = [[135, 290], [148, 302]]  # Область для проверки анимуса
-BUFFS_AREA = [[930, 345], [971, 526]]  # Область для проверки баффов
-SKILL_PANEL_AREA = [[336, 773], [525, 831]]  # Область панели скиллов
+BUFFS_AREA = [[935, 345], [971, 576]]  # Область для проверки баффов
+# CHAR_PANEL_AREA = [[440, 480], [535, 570]]  # Область панели скиллов
+CHAR_PANEL_AREA = [[0, 0], [1, 1]]
 HP_BAR_AREA = [[0, 210], [191, 283]]  # Область полоски HP/SP
-CHAT_AREA = [[0, 657], [300, 853]]  # Область чата
-RADAR_AREA = [[847, 222], [966, 296]]  # Область радара
-TOP_AREA = [[0, 0], [978, 256]]
+CHAT_AREA = [[0, 657], [245, 853]]  # Область чата
+RADAR_AREA = [[847, 222], [966, 350]]  # Область радара
+TOP_AREA = [[0, 0], [978, 230]]
 BOTTOM_AREA = [[0, 769], [968, 1030]]
 
+
+
+RADAR_DOT = [911, 290]
 MYMP_DOT = [88, 256]
 MYMP_DOT_COLOR = [200, 41, 41]
-MYHP_DOT = [75, 247]
+MYHP_DOT = [71, 247]
 MYHP_DOT_COLOR = [3, 10, 211]
 TARGET_DOT1 = [394, 260]
 TARGET_DOT1_COLOR = [55, 60, 66]
-TARGET_DOT2 = [406, 284]
-TARGET_DOT2_COLOR = [109, 197, 223]
+TARGET_DOT2 = [567, 287]
+TARGET_DOT2_COLOR = [206, 207, 210]
 TARGET_MAX_HP_DOT = [550, 272]
 TARGET_MAX_HP_DOT_COLOR = [18, 13, 165]
 ANIMUS_HP_DOT = [35, 289]
 ANIMUS_HP_DOT_COLOR = [34, 35, 189]
 ANIMUS_EXIT_DOT = [136, 295]
 ANIMUS_EXIT_DOT_COLOR = [237, 239, 249]
-SKILL_DOT = [418, 801]
+SKILL_DOT = [448, 801]
 SKILL_DOT_COLOR = [248, 88, 126]
+BATTLE_MODE_DOT = [37,247]
+BATTLE_MODE_DOT_COLOR = [27, 14, 181]
 
 # Интервалы проверки состояний
 RECTANGLE_THICKNESS = 2  # Толщина линий прямоугольников
-LOAD_LIMIT_FRAMETIME = 0.07  # Интервал в секундах
+LOAD_LIMIT_FRAMETIME = 0.2  # Интервал в секундах
 
 REDUCE_RESOLUTION = True  # Включить уменьшение разрешения
-
-
 

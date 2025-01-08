@@ -32,6 +32,8 @@ class RFBot:
         self.skill_is_pressed = False
         self.enough_mana = True
         self.enough_hp = True
+        self.battle_mode = False
+        self.have_close_targets_left = False
 
         self.mobs_coordinates = []
         self.screenshot = None
@@ -43,6 +45,7 @@ class RFBot:
         self.frame_delay = cfg.LOAD_LIMIT_FRAMETIME + 0.04
         self.stop_time = time.time() + cfg.BOT_RUNTIME_LIMIT_HOURS * 3600
         self.rebuff_time = time.time()
+        self.potion_time = time.time()
         self.animus_last_see_time = time.time()
         self.mob_ignore_timeout = time.time()
 
@@ -63,6 +66,8 @@ class RFBot:
             self.skill_is_pressed = args[4]
             self.enough_mana = args[5]
             self.enough_hp = args[6]
+            self.battle_mode = args[7]
+            self.have_close_targets_left = args[8]
     def update_screenshot(self, screenshot):
         with self.lock:
             self.screenshot = screenshot
@@ -70,6 +75,8 @@ class RFBot:
     def start(self):
         self.stopped = False
         sleep(3)
+        self.log(f"Bot start in {cfg.BOT_START_DELAY_HOURS} hours")
+        sleep(60*cfg.BOT_START_DELAY_HOURS)
         self.log("Bot Started")
         Thread(target=self.run, daemon=True).start()
 
@@ -80,11 +87,17 @@ class RFBot:
 
     def _rotate(self, time_to_rotate="Short"):
         self.keyboard.press(Key.left)
-        sleep(0.2 if time_to_rotate == "Short" else 0.4)
+        sleep(0.25 if time_to_rotate == "Short" else 0.4)
         self.keyboard.release(Key.left)
         sleep(2)
 
     def _rebuff(self):
+        if self.potion_time < time.time():
+            self.keyboard.press(Key.f2)
+            self.keyboard.release(Key.f2)
+            sleep(0.5)
+            self.potion_time = time.time() + 300
+
         if self.rebuff_time < time.time():
             self.log("Накладываем баффы (F5)")
             self.keyboard.press(Key.f5)
@@ -113,22 +126,26 @@ class RFBot:
             return False
 
         center = [408, 801]
-        self.mobs_coordinates.sort(key=lambda mob: math.dist(mob, center))
-        x, y = self.mobs_coordinates[0]
 
-        # Проверка границ
-        h, w = self.screenshot.shape[:2]
-        if not (0 <= y < h and 0 <= x < w):
-            self.log(f"Координаты моба ({x}, {y}) выходят за границы скриншота ({w}x{h}).")
-            return False
 
-        try:
-            b, g, r = self.screenshot[y, x]
-        except Exception as e:
-            self.log(f"Ошибка при чтении пикселя скриншота: {e}")
-            return False
         retry_select_count = 0
         while not self.have_target and retry_select_count <= 5:
+
+            self.mobs_coordinates.sort(key=lambda mob: mob[1], reverse=True)
+            x, y = self.mobs_coordinates[0]
+
+            # Проверка границ
+            h, w = self.screenshot.shape[:2]
+            if not (0 <= y < h and 0 <= x < w):
+                self.log(f"Координаты моба ({x}, {y}) выходят за границы скриншота ({w}x{h}).")
+                return False
+
+            try:
+                b, g, r = self.screenshot[y, x]
+            except Exception as e:
+                self.log(f"Ошибка при чтении пикселя скриншота: {e}")
+                return False
+            
             if retry_select_count > 0:
                 self.keyboard.press('s')
                 sleep(0.01)
@@ -169,9 +186,8 @@ class RFBot:
             return
 
         if self.have_target:
-            if self.have_animus and self.target_full_hp:
+            if cfg.BOT_ANIMUS_CAREFUL and  self.have_animus and self.target_full_hp:
                 self.log("Цель полна HP. Спамим клавиши (space + ',') для атаки анимусом.")
-
                 # Спамим клавиши, пока цель full_hp и не истечет время игнорирования
                 while self.have_target and self.target_full_hp and self.mob_ignore_timeout > time.time():
                     self.keyboard.press(',')
@@ -182,19 +198,19 @@ class RFBot:
                     sleep(0.1)  # Пауза между комбо-нажатием
 
             if not self.skill_is_pressed:
-                self.keyboard.press(Key.f3)
-                self.keyboard.release(Key.f3)
+                self.keyboard.press(Key.f4)
+                self.keyboard.release(Key.f4)
                 self.skill_is_pressed = True
                 sleep(1)
 
     def _loot_mobs(self):
         self.kill_counter += 1
         self.log(f"Лутаем. Убито мобов: {self.kill_counter}")
-        for _ in range(20):
+        for _ in range(cfg.BOT_LOOT_TIME):
             self.keyboard.press("x")
-            sleep(0.3)
+            sleep(0.03)
             self.keyboard.release("x")
-            sleep(0.1)
+            sleep(0.01)
 
     def recover_mp(self):
         self.keyboard.press(Key.f2)
@@ -286,10 +302,11 @@ class RFBot:
 
 
     def _state_attack(self):
+
         # Если цель пропала — значит убили
         if not self.have_target:
             if self.prev_attack :
-                self.current_state = self.STATE_LOOT
+                self.current_state = self.STATE_LOOT if not cfg.BOT_DONT_NEED_LOOT else self.STATE_BUFFING
                 self.prev_attack = False
             else:
                 self.current_state = self.STATE_SEARCH
@@ -329,9 +346,9 @@ class RFBot:
     def _state_stop(self):
         self.stopped = True
 
-        self.keyboard.press(Key.f8)
+        self.keyboard.press('h')
         sleep(0.1)
-        self.keyboard.press(Key.f8)
+        self.keyboard.release('h')
         sleep(11)
         self.keyboard.press(Key.f8)
         sleep(0.1)
@@ -339,7 +356,7 @@ class RFBot:
 
     def run(self):
 
-        while not self.stopped:
+        while not self.stopped and not cfg.DETECTION_DEBUG_MODE:
             start_time = time.time()
 
             # Проверка времени работы

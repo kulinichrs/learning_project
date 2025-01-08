@@ -1,5 +1,7 @@
 import datetime
 import inspect
+
+import cv2
 import cv2 as cv
 import numpy as np
 from threading import Thread, Lock
@@ -16,6 +18,9 @@ def is_in_dynamic_range(color, target, delta=25):
 
 class Detection:
     def __init__(self, renderer=None):
+
+        self.battle_mode = False
+        self.have_targets_left = False
         self.stopped = False
         self.enough_hp = True
         self.target_full_hp = True
@@ -23,6 +28,7 @@ class Detection:
         self.skill_is_pressed = False
 
         self.TARGET_MAX_HP_color = ""
+        self.BATTLE_MODE_COLOR = ""
         self.lock = Lock()
         self.screenshot = None
         self.mobs_coordinates = []
@@ -52,10 +58,11 @@ class Detection:
         self.hist_enough_mana = deque(maxlen=self.history_len)
         self.hist_enough_hp = deque(maxlen=self.history_len)
         self.hist_mobs_coordinates = deque(maxlen=self.history_len)
+        self.hist_have_targets_left = deque(maxlen=self.history_len)
 
         # Добавляем элементы для отладки в рендерер
         for area in [
-            cfg.SKILL_PANEL_AREA,
+            cfg.CHAR_PANEL_AREA,
             cfg.HP_BAR_AREA,
             cfg.CHAT_AREA,
             cfg.BUFFS_AREA,
@@ -73,6 +80,17 @@ class Detection:
                     "thickness": 1,
                 },
             )
+
+        self.renderer.add_element(
+            f"{cfg.RADAR_DOT}",
+            "circle",
+            {
+                "center": (cfg.RADAR_DOT[0], cfg.RADAR_DOT[1]),
+                "radius": 8,
+                "color": (255, 255, 0),
+                "thickness": 1,
+            },
+        )
 
         for dot in [
             cfg.MYHP_DOT,
@@ -108,6 +126,9 @@ class Detection:
             self.skill_is_pressed,
             self.enough_mana,
             self.enough_hp,
+            self.battle_mode,
+            self.have_targets_left
+
         ]
 
     def get_dot_data(self):
@@ -180,6 +201,8 @@ class Detection:
             sleep_time = max(0, self.frame_delay - elapsed_time)
             time.sleep(sleep_time)
 
+
+
     def process_frame(self):
         with self.lock:
             screenshot = self.screenshot.copy()
@@ -193,7 +216,7 @@ class Detection:
 
         # Исключаем области интерфейса
         for area in [
-            cfg.SKILL_PANEL_AREA,
+            cfg.CHAR_PANEL_AREA,
             cfg.HP_BAR_AREA,
             cfg.CHAT_AREA,
             cfg.BUFFS_AREA,
@@ -203,7 +226,7 @@ class Detection:
         ]:
             mask = self.filter_mask(mask, area)
 
-        min_area = 6
+        min_area = 0
         contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         filtered_contours = [cnt for cnt in contours if cv.contourArea(cnt) > min_area]
 
@@ -211,15 +234,16 @@ class Detection:
         for contour in filtered_contours:
             x, y, w, h = cv.boundingRect(contour)
             mobs_coords_local.append([x + w // 2, y + h // 2])
-
-        _have_target = is_in_dynamic_range(self.TARGET_DOT1_color, cfg.TARGET_DOT1_COLOR, delta=55) and \
-            is_in_dynamic_range(self.TARGET_DOT2_color, cfg.TARGET_DOT2_COLOR, delta = 55)
+        # _battle_mode = is_in_dynamic_range(self.MYHP_DOT_color, cfg.MYHP_DOT_COLOR)
+        _have_target =  (is_in_dynamic_range(self.TARGET_DOT1_color, cfg.TARGET_DOT1_COLOR, delta=55) and \
+             is_in_dynamic_range(self.TARGET_DOT2_color, cfg.TARGET_DOT2_COLOR, delta = 55))
         _target_full_hp = is_in_dynamic_range(self.TARGET_MAX_HP_color, cfg.TARGET_MAX_HP_DOT_COLOR)
         _have_animus = is_in_dynamic_range(self.ANIMUS_HP_DOT_color, cfg.ANIMUS_HP_DOT_COLOR) and \
             is_in_dynamic_range(self.ANIMUS_EXIT_DOT_color, cfg.ANIMUS_EXIT_DOT_COLOR)
         _skill_is_pressed = not is_in_dynamic_range(self.SKILL_DOT_color, cfg.SKILL_DOT_COLOR, 10)
         _enough_mana = is_in_dynamic_range(self.MYMP_DOT_color, cfg.MYMP_DOT_COLOR)
         _enough_hp = is_in_dynamic_range(self.MYHP_DOT_color, cfg.MYHP_DOT_COLOR)
+        _have_targets_left = self.is_yellow_present_on_radar()
 
         # Добавляем значения в историю
         self.hist_have_target.append(_have_target)
@@ -229,6 +253,7 @@ class Detection:
         self.hist_enough_mana.append(_enough_mana)
         self.hist_enough_hp.append(_enough_hp)
         self.hist_mobs_coordinates.append(mobs_coords_local)
+        self.hist_have_targets_left.append(_have_targets_left)
 
         # Проверяем стабилизацию значений (пример: все три последних значения должны совпадать)
         if len(self.hist_have_target) == self.history_len and len(set(self.hist_have_target)) == 1:
@@ -261,12 +286,10 @@ class Detection:
         else:
             final_enough_hp = self.enough_hp
 
-        # Для мобов можно решить, как считать "стабильность".
-        # Если хотим, чтобы координаты менялись только если трижды подряд одно и то же (что маловероятно),
-        # можно упрощенно сказать: если хоть один кадр отличается, меняем сразу.
-        # Для упрощения предположим: если трижды подряд одинаковый набор координат (это маловероятно),
-        # тогда обновляем. Иначе оставляем старый.
-        # Но для мобов, возможно, лучше обновлять сразу или с другим критерием.
+        if len(self.hist_have_targets_left) == self.history_len and len(set(self.hist_have_targets_left)) == 1:
+            final_have_targets_left = self.hist_have_targets_left[0]
+        else:
+            final_have_targets_left = self.have_targets_left
         if len(self.hist_mobs_coordinates) == self.history_len and all(self.hist_mobs_coordinates[0] == c for c in self.hist_mobs_coordinates):
             final_mobs_coordinates = self.hist_mobs_coordinates[0]
         else:
@@ -281,6 +304,8 @@ class Detection:
             self.skill_is_pressed = final_skill_is_pressed
             self.enough_mana = final_enough_mana
             self.enough_hp = final_enough_hp
+            self.have_targets_left = final_have_targets_left
+            # self.battle_mode = final_battle_mode
 
         if self.renderer:
             self.visualize_debug_info(mask, final_mobs_coordinates)
@@ -316,3 +341,28 @@ class Detection:
                 },
                 mob=True
             )
+
+    def is_yellow_present_on_radar(self, center = cfg.RADAR_DOT, radius = 8, yellow_threshold=1):
+        smth = self.screenshot.copy()
+        # Create a mask for the circular region
+        height, width, _ = smth.shape
+        y, x = np.ogrid[:height, :width]
+        circle_mask = (x - center[0])**2 + (y - center[1])**2 <= radius**2
+
+        # Define yellow color range in HSV
+        hsv_screenshot = cv2.cvtColor(smth, cv2.COLOR_BGR2HSV)
+        yellow_lower = np.array([20, 100, 100])  # Lower bound for yellow in HSV
+        yellow_upper = np.array([30, 255, 255])  # Upper bound for yellow in HSV
+
+        # Create a mask for yellow color
+        yellow_mask = cv2.inRange(hsv_screenshot, yellow_lower, yellow_upper)
+
+        # Apply the circular mask to the yellow mask
+        yellow_in_circle = yellow_mask & circle_mask.astype(np.uint8)
+
+        # Count yellow pixels within the circle
+        yellow_pixel_count = np.sum(yellow_in_circle > 0)
+
+        # Return True if yellow pixel count exceeds the threshold
+        return yellow_pixel_count >= yellow_threshold
+
