@@ -51,7 +51,7 @@ def draw_debug_info(renderer, detector, bot):
         pass
 
     bot_state_text = f""" 
-    BOT state: {bot.current_state}
+    State: {bot.get_current_state()}
     target: {bot.have_target}
     target full HP: {bot.target_full_hp}
     animus: {bot.have_animus}

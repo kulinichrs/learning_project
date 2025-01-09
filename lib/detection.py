@@ -230,7 +230,7 @@ class Detection:
         min_area = cfg.MIN_AREA
         contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         filtered_contours = [cv.boundingRect(cnt) for cnt in contours if cv.contourArea(cnt) > min_area]
-        print(f"Tracking input: {filtered_contours}")
+        # print(f"Tracking input: {filtered_contours}")
 
         # Координаты персонажа
 
