@@ -1,3 +1,4 @@
+import cv2
 import cv2 as cv
 import numpy as np
 import win32gui, win32ui, win32con
@@ -49,92 +50,64 @@ class WindowCapture:
 
     def get_screenshot(self):
         """
-        Захватывает текущий скриншот окна или экрана.
-        :return: Numpy массив с изображением.
+        Captures the current screenshot of the window or screen and applies posterization.
+        :return: Posterized image as a Numpy array.
         """
-        wDC = win32gui.GetWindowDC(self.hwnd)
-        dcObj = win32ui.CreateDCFromHandle(wDC)
-        cDC = dcObj.CreateCompatibleDC()
-        dataBitMap = win32ui.CreateBitmap()
-        dataBitMap.CreateCompatibleBitmap(dcObj, self.w, self.h)
-        cDC.SelectObject(dataBitMap)
-        cDC.BitBlt((0, 0), (self.w, self.h), dcObj, (self.cropped_x, self.cropped_y), win32con.SRCCOPY)
+        try:
+            # Capture the screen using Win32 API
+            wDC = win32gui.GetWindowDC(self.hwnd)
+            dcObj = win32ui.CreateDCFromHandle(wDC)
+            cDC = dcObj.CreateCompatibleDC()
+            dataBitMap = win32ui.CreateBitmap()
+            dataBitMap.CreateCompatibleBitmap(dcObj, self.w, self.h)
+            cDC.SelectObject(dataBitMap)
+            cDC.BitBlt((0, 0), (self.w, self.h), dcObj, (self.cropped_x, self.cropped_y), win32con.SRCCOPY)
 
-        # Конвертация в формат OpenCV
-        signedIntsArray = dataBitMap.GetBitmapBits(True)
-        img = np.frombuffer(signedIntsArray, dtype='uint8')
-        img.shape = (self.h, self.w, 4)
+            # Convert to OpenCV format
+            signedIntsArray = dataBitMap.GetBitmapBits(True)
+            img = np.frombuffer(signedIntsArray, dtype='uint8')
+            img = img.reshape((self.h, self.w, 4))
 
-        # Освобождение ресурсов
-        dcObj.DeleteDC()
-        cDC.DeleteDC()
-        win32gui.ReleaseDC(self.hwnd, wDC)
-        win32gui.DeleteObject(dataBitMap.GetHandle())
+            # Release resources
+            dcObj.DeleteDC()
+            cDC.DeleteDC()
+            win32gui.ReleaseDC(self.hwnd, wDC)
+            win32gui.DeleteObject(dataBitMap.GetHandle())
 
-        # Удаление альфа-канала
-        img = img[..., :3]
+            # Remove alpha channel
+            img = img[..., :3]
 
-        # Уменьшение разрешения (если указано)
-        if cfg.REDUCE_RESOLUTION:
-            img = cv.resize(img, None, fx=cfg.RESIZE_SCALE, fy=cfg.RESIZE_SCALE, interpolation=cv.INTER_AREA)
+            # Reduce resolution if configured
+            if cfg.REDUCE_RESOLUTION:
+                img = cv2.resize(img, None, fx=cfg.RESIZE_SCALE, fy=cfg.RESIZE_SCALE, interpolation=cv2.INTER_AREA)
 
-        return np.ascontiguousarray(img)
+            # Apply posterization
+            levels = 4  # You can adjust the number of levels (e.g., 4, 8, 16)
+            img = self.posterize_image(np.ascontiguousarray(img), levels)
 
+            return img
 
-    def simplify_image_colors(image, base_colors):
+        except Exception as e:
+            print(f"Error in get_screenshot: {e}")
+            return None
+
+    def posterize_image(self, image, levels):
         """
-        Упрощает цвета изображения, приводя их к ближайшим из заданной палитры.
-
-        :param image: Исходное изображение в формате BGR (numpy array).
-        :param base_colors: Список базовых цветов в формате BGR (list of tuples).
-        :return: Изображение с упрощённой цветовой палитрой.
+        Optimized: Posterizes an image by reducing the number of color levels using bitwise operations.
+        :param image: Input image as a Numpy array (BGR format).
+        :param levels: Number of color levels for each channel (e.g., 4, 8, 16).
+        :return: Posterized image.
         """
-        # Конвертируем изображение в формат float32 для вычислений
-        image = image.astype(np.float32)
+        # Calculate the bit-shift based on the number of levels
+        shift = 8 - int(np.log2(levels))  # For levels = 8 -> shift = 5 (256 >> 5 = 8 levels)
 
-        # Преобразуем базовые цвета в numpy массив
-        base_colors = np.array(base_colors, dtype=np.float32)
+        # Apply bitwise operations to reduce color levels
+        posterized_image = (image >> shift) << shift
 
-        # Создаем пустое изображение для упрощённых цветов
-        simplified_image = np.zeros_like(image)
+        # Add an offset for better rounding to midpoints
+        posterized_image += (1 << (shift - 1))
 
-        # Для каждого пикселя ищем ближайший цвет из палитры
-        for i in range(image.shape[0]):
-            for j in range(image.shape[1]):
-                pixel = image[i, j]
-                # Вычисляем расстояние до каждого базового цвета
-                distances = np.linalg.norm(base_colors - pixel, axis=1)
-                # Выбираем ближайший цвет
-                closest_color = base_colors[np.argmin(distances)]
-                simplified_image[i, j] = closest_color
-
-        # Преобразуем обратно к uint8
-        simplified_image = simplified_image.astype(np.uint8)
-        return simplified_image
-
-    # Пример использования
-    if name == "__main__":
-        # Задаём базовые цвета (BGR формат)
-        base_colors = [
-            (0, 0, 255),  # Красный
-            (0, 255, 0),  # Зелёный
-            (255, 0, 0),  # Синий
-            (0, 255, 255),  # Жёлтый
-            (255, 255, 0),  # Голубой
-            (255, 0, 255),  # Фиолетовый
-            (0, 0, 0),  # Чёрный
-            (255, 255, 255)  # Белый
-        ]
-
-        # Загрузим изображение
-        image = cv2.imread("input_image.jpg")
-
-        # Упростим цвета
-        simplified_image = simplify_image_colors(image, base_colors)
-
-        # Сохраним результат
-        cv2.imwrite("simplified_image.jpg", simplified_image)
-        print("Изображение сохранено как simplified_image.jpg")
+        return posterized_image
 
     @staticmethod
     def list_window_names():

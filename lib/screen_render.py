@@ -114,7 +114,7 @@ class ScreenRenderer:
             with self.wincap.lock:
                 frame = self.wincap.screenshot
                 if frame is None:
-                    print("Failed to capture screenshot. Retrying...")
+                    # print("Failed to capture screenshot. Retrying...")
                     continue
                 frame = frame.copy()
 

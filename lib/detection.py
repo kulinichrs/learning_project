@@ -8,6 +8,7 @@ from threading import Thread, Lock
 import time
 import config as cfg
 from collections import deque
+from lib.mobtracker import MobTracker
 
 
 def is_in_dynamic_range(color, target, delta=25):
@@ -18,7 +19,7 @@ def is_in_dynamic_range(color, target, delta=25):
 
 class Detection:
     def __init__(self, renderer=None):
-
+        self.mob_tracker =  MobTracker()
         self.battle_mode = False
         self.have_targets_left = False
         self.stopped = False
@@ -31,7 +32,7 @@ class Detection:
         self.BATTLE_MODE_COLOR = ""
         self.lock = Lock()
         self.screenshot = None
-        self.mobs_coordinates = []
+        self.mobs = []
         self.have_target = False
         self.have_buffs = False
         self.have_animus = False
@@ -122,7 +123,7 @@ class Detection:
             self.have_target,
             self.target_full_hp,
             self.have_animus,
-            self.mobs_coordinates,
+            self.mobs,
             self.skill_is_pressed,
             self.enough_mana,
             self.enough_hp,
@@ -208,11 +209,11 @@ class Detection:
             screenshot = self.screenshot.copy()
 
         self.update_dot_color_inf(screenshot)
-
+        hsv_image = cv.cvtColor(screenshot, cv.COLOR_BGR2HSV)
         # Фильтрация по желтому цвету (мобы)
         lower_yellow = np.array(cfg.COLOR_YELLOW_LOWER)
         upper_yellow = np.array(cfg.COLOR_YELLOW_UPPER)
-        mask = cv.inRange(screenshot, lower_yellow, upper_yellow)
+        mask = cv.inRange(hsv_image, lower_yellow, upper_yellow)
 
         # Исключаем области интерфейса
         for area in [
@@ -226,14 +227,21 @@ class Detection:
         ]:
             mask = self.filter_mask(mask, area)
 
-        min_area = 0
+        min_area = cfg.MIN_AREA
         contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        filtered_contours = [cnt for cnt in contours if cv.contourArea(cnt) > min_area]
+        filtered_contours = [cv.boundingRect(cnt) for cnt in contours if cv.contourArea(cnt) > min_area]
+        print(f"Tracking input: {filtered_contours}")
 
-        mobs_coords_local = []
-        for contour in filtered_contours:
-            x, y, w, h = cv.boundingRect(contour)
-            mobs_coords_local.append([x + w // 2, y + h // 2])
+        # Координаты персонажа
+
+        # Обновление трекера мобов
+        character_position = (cfg.SCREEN_CENTER_X, cfg.SCREEN_CENTER_Y)
+        tracked_mobs = self.mob_tracker.update(filtered_contours, character_position)
+
+        # Сохраняем координаты мобов
+        mobs_local = tracked_mobs.values()
+
+
         # _battle_mode = is_in_dynamic_range(self.MYHP_DOT_color, cfg.MYHP_DOT_COLOR)
         _have_target =  (is_in_dynamic_range(self.TARGET_DOT1_color, cfg.TARGET_DOT1_COLOR, delta=55) and \
              is_in_dynamic_range(self.TARGET_DOT2_color, cfg.TARGET_DOT2_COLOR, delta = 55))
@@ -252,7 +260,6 @@ class Detection:
         self.hist_skill_is_pressed.append(_skill_is_pressed)
         self.hist_enough_mana.append(_enough_mana)
         self.hist_enough_hp.append(_enough_hp)
-        self.hist_mobs_coordinates.append(mobs_coords_local)
         self.hist_have_targets_left.append(_have_targets_left)
 
         # Проверяем стабилизацию значений (пример: все три последних значения должны совпадать)
@@ -290,17 +297,12 @@ class Detection:
             final_have_targets_left = self.hist_have_targets_left[0]
         else:
             final_have_targets_left = self.have_targets_left
-        if len(self.hist_mobs_coordinates) == self.history_len and all(self.hist_mobs_coordinates[0] == c for c in self.hist_mobs_coordinates):
-            final_mobs_coordinates = self.hist_mobs_coordinates[0]
-        else:
-            # Можно либо взять последнее, либо оставить старое:
-            final_mobs_coordinates = mobs_coords_local  # Или self.mobs_coordinates
 
         with self.lock:
             self.have_target = final_have_target
             self.target_full_hp = final_target_full_hp
             self.have_animus = final_have_animus
-            self.mobs_coordinates = final_mobs_coordinates
+            self.mobs = mobs_local
             self.skill_is_pressed = final_skill_is_pressed
             self.enough_mana = final_enough_mana
             self.enough_hp = final_enough_hp
@@ -308,21 +310,21 @@ class Detection:
             # self.battle_mode = final_battle_mode
 
         if self.renderer:
-            self.visualize_debug_info(mask, final_mobs_coordinates)
+            self.visualize_debug_info(mask, tracked_mobs.values())
 
     def filter_mask(self, mask_to_filter, filter_range):
         mask_to_filter[filter_range[0][1]:filter_range[1][1],
                        filter_range[0][0]:filter_range[1][0]] = 0
         return mask_to_filter
 
-    def visualize_debug_info(self, mask, mobs_coordinates):
+    def visualize_debug_info(self, mask, mobs):
         self.renderer.remove_mob_elements()
-        for i, (x, y) in enumerate(mobs_coordinates):
+        for mob in mobs:
             self.renderer.add_element(
-                f"mob_{i}",
+                f"mob_{mob.id}",
                 "circle",
                 {
-                    "center": (x, y),
+                    "center": (mob.x, mob.y),
                     "radius": 10,
                     "color": (0, 255, 0),
                     "thickness": 2,
@@ -330,11 +332,11 @@ class Detection:
                 mob=True
             )
             self.renderer.add_element(
-                f"mob_text_{i}",
+                f"mob_text_{mob.id}",
                 "text",
                 {
-                    "text": f"Mob {i}",
-                    "position": (x + 15, y + 15),
+                    "text": f"Mob {mob.id}",
+                    "position": (mob.x + 15, mob.y + 15),
                     "color": (255, 255, 255),
                     "font_scale": 0.5,
                     "thickness": 1,

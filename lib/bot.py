@@ -10,7 +10,6 @@ import config as cfg
 class RFBot:
     STATE_START = "START"
     STATE_ROTATE = "ROTATE"
-    STATE_RECOVER = "RECOVER"
     STATE_BUFFING = "BUFFING"
     STATE_SUMMONING = "SUMMONING"
     STATE_SEARCH = "SEARCH"
@@ -35,7 +34,7 @@ class RFBot:
         self.battle_mode = False
         self.have_close_targets_left = False
 
-        self.mobs_coordinates = []
+        self.mobs = []
         self.screenshot = None
 
         self.prev_attack = False
@@ -62,7 +61,7 @@ class RFBot:
             self.have_target = args[0]
             self.target_full_hp = args[1]
             self.have_animus = args[2]
-            self.mobs_coordinates = args[3].copy()
+            self.mobs = args[3].copy()
             self.skill_is_pressed = args[4]
             self.enough_mana = args[5]
             self.enough_hp = args[6]
@@ -121,7 +120,7 @@ class RFBot:
         if self.screenshot is None:
             self.log("Скриншот отсутствует, не можем выбрать цель.")
             return False
-        if len(self.mobs_coordinates) == 0:
+        if len(self.mobs) == 0:
             self.log("Список мобов пуст, некого выбирать.")
             return False
 
@@ -131,8 +130,8 @@ class RFBot:
         retry_select_count = 0
         while not self.have_target and retry_select_count <= 5:
 
-            self.mobs_coordinates.sort(key=lambda mob: mob[1], reverse=True)
-            x, y = self.mobs_coordinates[0]
+            self.mobs.sort(key=lambda mob: mob.distance_to_character, reverse=True)
+            x, y = self.mobs[0]
 
             # Проверка границ
             h, w = self.screenshot.shape[:2]
@@ -230,24 +229,6 @@ class RFBot:
         sleep(4)
 
 
-    def _state_recover(self):
-        if self.have_target:
-            # Если есть цель, переходим в атаку
-            self.current_state = self.STATE_ATTACK
-            return
-        # Логика восстановления HP/MP: например, использовать зелья, подождать.
-        self.log("Восстанавливаемся (HP/MP). Ждем 5 секунд.")
-        self.recover_mp()
-        # Предполагается, что к этому моменту enough_hp/enough_mana улучшится.
-        # После восстановления переходим к баффам или сразу дальше.
-        if self.rebuff_time < time.time():
-            self.current_state = self.STATE_BUFFING
-        else:
-            if not self.have_animus and self.animus_last_see_time < time.time():
-                self.current_state = self.STATE_SUMMONING
-            else:
-                self.current_state = self.STATE_SEARCH
-
     def _state_buffing(self):
         if self.have_target:
             # Если есть цель, переходим в атаку
@@ -291,7 +272,7 @@ class RFBot:
             self.current_state = self.STATE_ATTACK
             return
 
-        if len(self.mobs_coordinates) == 0:
+        if len(self.mobs) == 0:
             # Мобов нет — идем в IDLE
             self.current_state = self.STATE_ROTATE
             return
@@ -330,11 +311,9 @@ class RFBot:
         # Лутаем
         self._loot_mobs()
         # После лута проверяем мобов снова
-        if len(self.mobs_coordinates) > 0:
+        if len(self.mobs) > 0:
             # Мобы есть — проверим надо ли баффаться или призвать анимуса
-            if not self.enough_mana: # not self.enough_hp or not self.enough_mana:
-                self.current_state = self.STATE_RECOVER
-            elif self.rebuff_time < time.time():
+            if self.rebuff_time < time.time():
                 self.current_state = self.STATE_BUFFING
             elif not self.have_animus and self.animus_last_see_time < time.time():
                 self.current_state = self.STATE_SUMMONING
@@ -371,8 +350,6 @@ class RFBot:
                     self._state_start()
                 elif self.current_state == self.STATE_ROTATE:
                     self._state_rotate()
-                elif self.current_state == self.STATE_RECOVER:
-                    self._state_recover()
                 elif self.current_state == self.STATE_BUFFING:
                     self._state_buffing()
                 elif self.current_state == self.STATE_SUMMONING:
