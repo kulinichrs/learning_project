@@ -89,11 +89,11 @@ class RFBot:
                 self.stopping = True
                 break
 
-            # try:
-            self.state_manager.handle(self)
-            # except Exception as e:
-            #     self.log(f"Ошибка в состоянии: {e}. Сбрасываем в BuffingState.")
-            #     self.state_manager.set_state(BuffingState())
+            try:
+                self.state_manager.handle(self)
+            except Exception as e:
+                self.log(f"Ошибка в состоянии: {e}. Сбрасываем в BuffingState.")
+                self.state_manager.set_state(BuffingState())
 
             elapsed_time = time.time() - start_time
             sleep_time = max(0, self.frame_delay - elapsed_time)
@@ -139,28 +139,50 @@ class RFBot:
         sleep(1)
 
     def select_target(self):
-        if not self.mobs:
+        if self.screenshot is None:
+            self.log("Скриншот отсутствует, не можем выбрать цель.")
+            return False
+        if len(self.mobs) == 0:
+            self.log("Список мобов пуст, некого выбирать.")
             return False
 
-        # Предположим, что каждый моб — это словарь с координатами и ID
-        try:
-            self.mobs.sort(key=lambda mob: mob.distance_to_character)  # Сортировка по дистанции
-            target_mob = self.mobs[0]  # Первый моб как ближайший
-            x, y = target_mob.get_center()
+        retry_select_count = 0
+        while not self.have_target and retry_select_count <= 5:
 
-            if x is None or y is None:
-                return False
+            self.mobs.sort(key=lambda mob: mob.distance_to_character, reverse=True)
+            x, y = self.mobs[0].get_center()
 
-            # Выполняем выбор цели
-            self.mouse.position = (x, y)
-            self.mouse.press(Button.left)
-            self.mouse.release(Button.left)
-            self.have_target = True
-            return True
+            # Проверка границ
+            h, w = self.screenshot.shape[:2]
+            if not (0 <= y < h and 0 <= x < w):
+                 return False
 
-        except Exception as e:
-            self.log(f"Error selecting target: {e}")
-            return False
+            if retry_select_count > 0:
+                self.keyboard.press('v')
+                sleep(0.01)
+                self.keyboard.release('v')
+                sleep(0.01)
+                self.keyboard.press('q')
+                sleep(0.01)
+                self.keyboard.release('q')
+                self.mouse.position = (x, y)
+                if self.renderer:
+                    self.renderer.add_element(
+                        "Click",
+                        "circle",
+                        {"center": (x, y), "radius": 2, "color": (255, 255, 255), "thickness": 2},
+                    )
+                self.keyboard.press(Key.esc)
+                sleep(0.01)
+                self.keyboard.release(Key.esc)
+                sleep(0.01)
+                self.mouse.press(Button.left)
+                self.mouse.release(Button.left)
+                self.mob_ignore_timeout = time.time() + cfg.MOB_IGNORE_TIMEOUT_SECONDS
+                sleep(1)
+
+            retry_select_count += 1
+        return self.have_target
 
     def attack_target(self):
         if self.mob_ignore_timeout < time.time() and self.target_full_hp:
@@ -188,21 +210,6 @@ class RFBot:
                 self.skill_is_pressed = True
                 sleep(1)
 
-    def attack_target_until_hp_drops(self):
-        self.mob_ignore_timeout = time.time() + cfg.MOB_IGNORE_TIMEOUT_SECONDS
-        while self.have_target and self.target_full_hp and self.mob_ignore_timeout > time.time():
-            self.keyboard.press(Key.space)
-            sleep(0.1)
-            self.keyboard.release(Key.space)
-            sleep(0.5)  # Пауза между комбо-нажатием
-
-    def reset_target(self):
-        if self.have_target:
-            self.keyboard.press(Key.esc)
-            sleep(0.1)
-            self.keyboard.release(Key.esc)
-            sleep(0.2)  # Пауза между комбо-нажатием
-
     def loot_mobs(self):
         self.kill_counter += 1
         self.log(f"Лутаем. Убито мобов: {self.kill_counter}")
@@ -211,134 +218,3 @@ class RFBot:
             sleep(0.03)
             self.keyboard.release("x")
             sleep(0.01)
-
-    def switch_weapon(self, weapon_type):
-        if weapon_type == "ranged":
-            self.keyboard.press(Key.f2)
-            self.keyboard.release(Key.f2)
-            self.current_weapon = "ranged"
-            self.log("Switched to ranged weapon.")
-        elif weapon_type == "main":
-            self.keyboard.press(Key.f1)
-            self.keyboard.release(Key.f1)
-            self.current_weapon = "main"
-            self.log("Switched to melee weapon.")
-        sleep(1)
-
-    # # -------------------- Логика состояний --------------------
-    #
-    #
-    # def _state_start(self):
-    #     self.current_state = self.STATE_BUFFING
-    #     sleep(4)
-    #
-    #
-    # def _state_buffing(self):
-    #     if self.have_target:
-    #         # Если есть цель, переходим в атаку
-    #         self.current_state = self.STATE_ATTACK
-    #         return
-    #     # Накладываем баффы
-    #     self.rebuff()
-    #     # После баффа идем к призыву анимуса или к поиску цели
-    #     if not self.have_animus and self.animus_last_see_time < time.time():
-    #         self.current_state = self.STATE_SUMMONING
-    #     else:
-    #         self.current_state = self.STATE_SEARCH
-    #
-    # def _state_summoning(self):
-    #     if self.have_target:
-    #         # Если есть цель, переходим в атаку
-    #         self.current_state = self.STATE_ATTACK
-    #         return
-    #     # Призываем анимуса
-    #     if not self.have_animus and self.animus_last_see_time < time.time():
-    #         self.summon_animus()
-    #     if self.have_animus:
-    #         self.animus_last_see_time = time.time() + cfg.ANIMUS_TIMEOUT_SECODS
-    #     # После призыва — поиск цели
-    #     sleep(1)
-    #     self.current_state = self.STATE_SEARCH
-    #
-    # def _state_rotate(self):
-    #     # Пытаемся выбрать цель
-    #     if self.have_target:
-    #         # Если цель уже есть по какой-то причине — в атаку
-    #         self.current_state = self.STATE_ATTACK
-    #         return
-    #     self.rotate()
-    #     self.current_state = self.STATE_SEARCH
-    #
-    # def _state_search(self):
-    #     # Пытаемся выбрать цель
-    #     if self.have_target:
-    #         # Если цель уже есть по какой-то причине — в атаку
-    #         self.current_state = self.STATE_ATTACK
-    #         return
-    #
-    #     if len(self.mobs) == 0:
-    #         # Мобов нет — идем в IDLE
-    #         self.current_state = self.STATE_ROTATE
-    #         return
-    #
-    #     if not self.select_target():
-    #         self.current_state =  self.STATE_ROTATE
-    #         return
-    #
-    #
-    # def _state_attack(self):
-    #
-    #     # Если цель пропала — значит убили
-    #     if not self.have_target:
-    #         if self.prev_attack :
-    #             self.current_state = self.STATE_LOOT if not cfg.BOT_DONT_NEED_LOOT else self.STATE_BUFFING
-    #             self.prev_attack = False
-    #         else:
-    #             self.current_state = self.STATE_SEARCH
-    #             self.prev_attack = False
-    #     else:
-    #         # Атакуем цель
-    #         self.prev_attack = True
-    #         self.attack_target()
-    #         # Если цель не пропадет слишком долго, _attack_target сбросит have_target в False и мы лутанем
-    #
-    # def _state_loot(self):
-    #     if self.stopping:
-    #         self.loot_mobs()
-    #         self.current_state = self.STATE_STOP
-    #         return
-    #
-    #     if self.have_target:
-    #         # Если есть цель, переходим в атаку
-    #         self.current_state = self.STATE_ATTACK
-    #         return
-    #     # Лутаем
-    #     self.loot_mobs()
-    #     # После лута проверяем мобов снова
-    #     if len(self.mobs) > 0:
-    #         # Мобы есть — проверим надо ли баффаться или призвать анимуса
-    #         if self.rebuff_time < time.time():
-    #             self.current_state = self.STATE_BUFFING
-    #         elif not self.have_animus and self.animus_last_see_time < time.time():
-    #             self.current_state = self.STATE_SUMMONING
-    #         else:
-    #             self.current_state = self.STATE_SEARCH
-    #     else:
-    #         self.current_state = self.STATE_BUFFING
-    #
-    # def _state_stop(self):
-    #     self.stopped = True
-    #
-    #     self.keyboard.press('h')
-    #     sleep(0.1)
-    #     self.keyboard.release('h')
-    #     sleep(11)
-    #     self.keyboard.press(Key.f8)
-    #     sleep(0.1)
-    #     self.keyboard.press(Key.f8)
-
-
-
-
-
-

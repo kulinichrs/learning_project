@@ -14,15 +14,15 @@ CIRCLE_RADIUS_SMALL = 5  # Small radius for possible target.
 KEY_WAIT_MS = 100  # Delay for OpenCV key listener.
 
 # Bot runtime settings
-MIN_AREA = 15
+MIN_AREA = 30
 USE_POTIONS = False
 USE_ANIMUS = False
 DETECTION_DEBUG_MODE= False
 BOT_DONT_NEED_LOOT= False
-BOT_MASS_FARM_MODE = True
+BOT_MASS_FARM_MODE = False
 MAX_AGGRO_MOBS = 3
 BOT_ANIMUS_CAREFUL = False
-BOT_RUNTIME_LIMIT_HOURS = 5  # Maximum bot runtime in hours.
+BOT_RUNTIME_LIMIT_HOURS = 10  # Maximum bot runtime in hours.
 BOT_START_DELAY_HOURS = 0
 MOB_IGNORE_TIMEOUT_SECONDS = 180  # Timeout for ignoring mobs in seconds.
 ATTACK_VALID_TIMEOUT_SECONDS = 3  # Timeout for attack validation in seconds.
@@ -39,8 +39,8 @@ COLOR_ATTACK_R_RANGE = (80, 255)  # Red channel range for attack color.
 COLOR_ATTACK_G_RANGE = (80, 255)  # Green channel range for attack color.
 COLOR_ATTACK_B_RANGE = (0, 120)  # Blue channel range for attack color.
 
-COLOR_YELLOW_LOWER = [28, 120, 95]  # Lower bound for yellow color detection.
-COLOR_YELLOW_UPPER = [33, 255, 255]  # Upper bound for yellow color detection.
+COLOR_YELLOW_LOWER = [30, 160, 95]  # Lower bound for yellow color detection.
+COLOR_YELLOW_UPPER = [30, 255, 255]  # Upper bound for yellow color detection.
 
 # Colors for visualization
 LINE_COLOR_RED = (0, 0, 255)  # Red color for rectangle lines.
